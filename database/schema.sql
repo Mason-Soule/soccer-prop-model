@@ -5,7 +5,8 @@
 CREATE TABLE IF NOT EXISTS teams (
     team_id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
-    league VARCHAR(50) NOT NULL
+    league VARCHAR(50) NOT NULL,
+    UNIQUE(name, league)
 );
 
 -- Matches table (date used for temporal filtering)
@@ -15,7 +16,8 @@ CREATE TABLE IF NOT EXISTS matches (
     home_team_id INTEGER NOT NULL REFERENCES teams(team_id),
     away_team_id INTEGER NOT NULL REFERENCES teams(team_id),
     season VARCHAR(20) NOT NULL,
-    league VARCHAR(50) NOT NULL
+    league VARCHAR(50) NOT NULL,
+    referee VARCHAR(50) NOT NULL
 );
 
 CREATE INDEX idx_matches_date ON matches(date);
@@ -38,6 +40,21 @@ CREATE TABLE IF NOT EXISTS player_matches (
     goals INTEGER NOT NULL DEFAULT 0,
     assists INTEGER DEFAULT 0,
     UNIQUE(player_id, match_id)
+);
+
+-- Create team match stats
+CREATE TABLE IF NOT  EXISTS team_match_stats (
+    team_id INTEGER REFERENCES teams(team_id),
+    match_id INTEGER REFERENCES matches(match_id),
+    is_home BOOLEAN NOT NULL,
+    goals INTEGER,
+    shots INTEGER,
+    shots_on_target INTEGER,
+    fouls INTEGER,
+    corners INTEGER,
+    yellow_cards INTEGER,
+    red_cards INTEGER,
+    UNIQUE(team_id, match_id)
 );
 
 CREATE INDEX idx_player_matches_player ON player_matches(player_id);
