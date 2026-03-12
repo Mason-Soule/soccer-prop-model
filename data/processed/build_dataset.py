@@ -17,11 +17,24 @@ def build_match_level_df(df):
     home = df[df["is_home"] == True].copy()
     away = df[df["is_home"] == False].copy()
 
+    # Drop match-level columns from the away side before merging.
+    # These columns are identical for both sides of the same match,
+    # so keeping both creates _home/_away duplicates that break XGBoost.
+    match_level_cols = ["league_avg_goals_last30"]
+    away = away.drop(columns=[c for c in match_level_cols if c in away.columns])
+
     match_df = home.merge(
         away,
         on="match_id",
         suffixes=("_home", "_away")
     )
+
+    # Rename the _home suffix off match-level columns — they're not home-specific
+    for col in match_level_cols:
+        if f"{col}_home" in match_df.columns:
+            match_df = match_df.rename(columns={f"{col}_home": col})
+
+
 
     # Target should be identical from either side
     match_df["over_2_5"] = match_df["over_2_5_home"]
@@ -34,6 +47,55 @@ def build_match_level_df(df):
     match_df["days_rest_diff"] = (
         match_df["days_rest_home"] - match_df["days_rest_away"]
     )
+
+    # --- Combined attack features ---
+    # Sum of both teams' rolling xG/goals — a direct proxy for total goals
+    # More predictive than using home + away separately because the model
+    # no longer has to discover the additive relationship itself.
+    match_df["combined_xg_last5"] = (
+        match_df["avg_xg_last5_home"] + match_df["avg_xg_last5_away"]
+    )
+    match_df["combined_xg_last15"] = (
+        match_df["avg_xg_last15_home"] + match_df["avg_xg_last15_away"]
+    )
+    match_df["combined_goals_last5"] = (
+        match_df["avg_goals_last5_home"] + match_df["avg_goals_last5_away"]
+    )
+
+# --- Head-to-head average goals ---
+    # Average total goals in the last 5 meetings between this exact pairing.
+    # fixture_key sorts both team names so A-vs-B and B-vs-A are the same key.
+    # We iterate sorted by date and look back — no leakage.
+    match_df = match_df.sort_values("date_home").reset_index(drop=True)
+    match_df = match_df.loc[:, ~match_df.columns.duplicated()]
+
+    match_df["total_goals_h2h"] = (
+        match_df["goals_home"] + match_df["goals_away"]
+    )
+    match_df["fixture_key"] = match_df.apply(
+        lambda r: tuple(sorted([r["team_name_home"], r["team_name_away"]])),
+        axis=1,
+    )
+
+    h2h_vals = []
+    # Build a dict of fixture -> list of past total goals as we walk forward
+    fixture_history: dict = {}
+
+    for idx, row in match_df.iterrows():
+        key = row["fixture_key"]
+        history = fixture_history.get(key, [])
+
+        if len(history) >= 2:
+            h2h_vals.append(np.mean(history[-5:]))
+        else:
+            h2h_vals.append(np.nan)
+
+        # Append current match result AFTER recording the lookback value
+        # so the current match never appears in its own average
+        fixture_history[key] = history + [row["total_goals_h2h"]]
+
+    match_df["h2h_avg_goals_last5"] = h2h_vals
+    match_df = match_df.drop(columns=["total_goals_h2h", "fixture_key"])
 
     return match_df
 
@@ -130,6 +192,30 @@ def build_dataframe():
     core_cols = ["avg_goals_last15", "avg_goals_conceded_last15"]
     df = df.dropna(subset=core_cols)
 
+    # --- League-wide rolling average goals ---
+    # Computed across all matches (not per team) to capture era-level goal rates.
+    # We sort by date, deduplicate to one row per match (using only home rows
+    # to avoid double-counting), compute the rolling mean, then join back.
+    # shift(1) ensures we never include the current match in its own average.
+    match_goals = (
+        df[df["is_home"] == True][["match_id", "date", "goals", "goals_conceded"]]
+        .copy()
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
+    match_goals["total_goals"] = match_goals["goals"] + match_goals["goals_conceded"]
+    match_goals["league_avg_goals_last30"] = (
+        match_goals["total_goals"]
+        .shift(1)
+        .rolling(window=30, min_periods=15)
+        .mean()
+    )
+    # Join the league average back onto all rows (home + away) by match_id
+    df = df.merge(
+        match_goals[["match_id", "league_avg_goals_last30"]],
+        on="match_id",
+        how="left",
+    )
+
+
     return build_match_level_df(df)
-
-

@@ -59,6 +59,7 @@ SEASONS = {
     "2021-22": "2122",
     "2022-23": "2223",
     "2023-24": "2324",
+    "2024-25": "2425",
 }
 
 BASE_URL = "https://www.football-data.co.uk/mmz4281/{code}/E0.csv"

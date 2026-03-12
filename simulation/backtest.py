@@ -38,7 +38,7 @@ project_root = Path(__file__).parent.parent.absolute()
 sys.path.insert(0, str(project_root))
 
 from data.processed.build_dataset import build_dataframe
-from ingestion.odds_ingestion import load_odds, merge_odds_with_match_df, audit_name_mismatches
+from ingestion.odds_ingestion import load_odds, merge_odds_with_match_df
 
 # ---------------------------------------------------------------------------
 # Config — must match train.py exactly
@@ -72,6 +72,13 @@ FEATURE_COLS = [
     "days_rest_current_away",
     "days_rest_diff",
     "ref_over_rate_last20_home",
+    "combined_xg_last5",
+    "combined_xg_last15",
+    "combined_goals_last5",
+    # League era baseline
+    "league_avg_goals_last30",
+    # Head-to-head fixture tendency
+    "h2h_avg_goals_last5",
 ]
 
 # Minimum seasons of training data before we start predicting
@@ -124,6 +131,9 @@ def load_data() -> pd.DataFrame:
     print("Loading odds data...")
     odds_df = load_odds()
     df = merge_odds_with_match_df(match_df, odds_df)
+
+    # Deduplicate any columns introduced by the odds merge
+    df = df.loc[:, ~df.columns.duplicated()]
 
     mask_all_missing = df[FEATURE_COLS].isna().all(axis=1)
     df = df[~mask_all_missing].copy()
@@ -215,6 +225,7 @@ def run_fold(df: pd.DataFrame, fold: dict) -> pd.DataFrame:
     Train on fold's train seasons, predict on test season.
     Returns DataFrame of test season predictions with edge and bet columns.
     """
+    df = df.reset_index(drop=True)
     train_df = df[df["season_start"].isin(fold["train_seasons"])].copy()
     test_df  = df[df["season_start"] == fold["test_season"]].copy()
 
@@ -422,6 +433,8 @@ def aggregate_results(all_predictions: pd.DataFrame) -> None:
         for i, b in enumerate(bankroll_history):
             if i % 50 == 0:
                 print(f"    Bet {i:>4}: £{b:,.2f}")
+        
+                
 
         
         

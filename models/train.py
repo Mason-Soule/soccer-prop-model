@@ -73,6 +73,16 @@ FEATURE_COLS = [
 
     # Referee
     "ref_over_rate_last20_home",
+
+    # Combined attack strength — sum of both teams' rolling xG/goals
+    # Directly encodes total goal expectation without the model inferring addition
+    "combined_xg_last5",
+    "combined_xg_last15",
+    "combined_goals_last5",
+    "league_avg_goals_last30",
+
+    # Head-to-head fixture tendency
+    "h2h_avg_goals_last5",
 ]
 
 TRAIN_SEASONS = (2016, 2021)  # inclusive
