@@ -59,7 +59,6 @@ SEASONS = {
     "2021-22": "2122",
     "2022-23": "2223",
     "2023-24": "2324",
-    "2024-25": "2425",
 }
 
 BASE_URL = "https://www.football-data.co.uk/mmz4281/{code}/E0.csv"
@@ -67,8 +66,8 @@ BASE_URL = "https://www.football-data.co.uk/mmz4281/{code}/E0.csv"
 # Pinnacle closing odds are the sharpest signal.
 # PSC columns only appear consistently from ~2019-20 onward.
 # For earlier seasons the pipeline automatically falls back to BbAv (avg market).
-OVER_COLS_PRIORITY  = ["PSC>2.5", "BbAv>2.5", "B365>2.5"]
-UNDER_COLS_PRIORITY = ["PSC<2.5", "BbAv<2.5", "B365<2.5"]
+OVER_COLS_PRIORITY  = ["B365C>2.5", "BbAv>2.5", "B365>2.5"]
+UNDER_COLS_PRIORITY = ["B365C<2.5", "BbAv<2.5", "B365<2.5"]
 
 # Save path mirrors your data/raw/epl/<season>/ structure
 RAW_DIR = project_root / "data" / "raw" / "epl"
@@ -136,7 +135,9 @@ TEAM_NAME_MAP = {
     "Swansea City":               "Swansea",
 
     # Aston Villa — occasional variant
-    "Aston Villa":                "Aston Villa",  # already matches, listed for completeness
+    "Aston Villa":                "Aston Villa",
+
+    "Ipswich Town": "Ipswich",
 
     # Burnley, Chelsea, Arsenal, Everton, Southampton, West Ham,
     # Liverpool, Bournemouth, Watford, Middlesbrough, Fulham,

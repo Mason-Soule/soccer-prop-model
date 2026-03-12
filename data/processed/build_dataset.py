@@ -1,24 +1,17 @@
 import pandas as pd
+import numpy as np
 import sys
 import os
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 load_dotenv()
 
-# Get the parent directory (your_project/)
-# Current file: data/processed/build_dataset.py
-# Go up two levels: data/processed/ -> data/ -> your_project/
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Or using pathlib (cleaner)
 from pathlib import Path
 project_root = Path(__file__).parent.parent.parent.absolute()
-
-# Add to Python path
 sys.path.insert(0, str(project_root))
 
-# Now import from features (sibling directory)
-from features.rolling_stats import avg_goals_last5, avg_goals_conceded_last5, avg_shots_last5, avg_shots_conceded_last5
+from features.rolling_stats import add_rolling_averages, add_venue_rolling_averages, add_derived_features
+
 
 def build_match_level_df(df):
     home = df[df["is_home"] == True].copy()
@@ -32,13 +25,18 @@ def build_match_level_df(df):
 
     # Target should be identical from either side
     match_df["over_2_5"] = match_df["over_2_5_home"]
+    match_df["season_start"] = match_df["season_home"].str[:4].astype(int)
 
-    match_df["season_start"] = df["season"].str[:4].astype(int)
+    # --- Match-level derived features ---
+    # These are computed after the home/away merge since they combine both sides
 
-    #current attack and defense form of both teams
-    match_df["total_attack_form"] = (match_df["avg_goals_last5_home"] + match_df["avg_goals_last5_away"])
-    match_df["total_defense_form"] = (match_df["avg_goals_conceded_last5_home"] + match_df["avg_goals_conceded_last5_away"])
+    # Days rest differential — positive means home team more rested
+    match_df["days_rest_diff"] = (
+        match_df["days_rest_home"] - match_df["days_rest_away"]
+    )
+
     return match_df
+
 
 def build_dataframe():
     query = """
@@ -47,6 +45,7 @@ def build_dataframe():
         m.date,
         m.season,
         m.league,
+        m.referee,
 
         tms.team_id,
         t.name AS team_name,
@@ -60,6 +59,8 @@ def build_dataframe():
         tms.corners,
         tms.yellow_cards,
         tms.red_cards,
+        tms.xg,
+        tms.xga,
 
         -- Opponent stats
         opp.team_id AS opponent_id,
@@ -87,28 +88,48 @@ def build_dataframe():
     """
 
     engine = create_engine(
-    f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
-    f"@localhost:5432/{os.getenv('DB_NAME')}"
-)
+        f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+        f"@localhost:5432/{os.getenv('DB_NAME')}"
+    )
     df = pd.read_sql(query, engine)
 
-    #sorts by team id and date
+    # Sort by team and date — required for all rolling calculations
     df = df.sort_values(["team_id", "date"])
 
-    #adds goal difference, win/loss, and over 2.5 goals
-    df["goal_diff"] = df["goals"] - df["goals_conceded"]
-    df["win"] = (df["goal_diff"] > 0).astype(int)
-    df["over_2_5"] = ((df["goals"] + df["goals_conceded"]) > 2).astype(int)
+    # --- Base target and derived columns ---
+    df["goal_diff"]  = df["goals"] - df["goals_conceded"]
+    df["win"]        = (df["goal_diff"] > 0).astype(int)
+    df["over_2_5"]   = ((df["goals"] + df["goals_conceded"]) > 2).astype(int)
 
-    #window = 5 by default
-    #Add rolling goals to the data frame and drope first 5 games of each team
-    df = avg_goals_last5(df)
-    df = avg_goals_conceded_last5(df)
-    df = avg_shots_last5(df)
-    df = avg_shots_conceded_last5(df)
-    df = df.dropna()
+    # xG overperformance — positive means scoring more than chances deserved
+    # Used as a mean-reversion signal: high values predict future regression
+    df["xg_overperformance"] = df["goals"] - df["xg"]
+
+    # Shot quality — xG per shot, measures chance quality not just volume
+    df["shot_quality"] = df["xg"] / df["shots"].replace(0, np.nan)
+
+    # Shot quality conceded — how dangerous the chances the team gives up are
+    df["shot_quality_conceded"] = df["xga"] / df["shots_conceded"].replace(0, np.nan)
+
+    # Days rest — how many days since the team's last match
+    # Shift(1) so we don't use the current match date
+    df["days_rest"] = (
+        df.groupby("team_id")["date"]
+          .transform(lambda s: s.diff().dt.days)
+    )
+
+    # --- Rolling averages for all standard stats + xG ---
+    df = add_rolling_averages(df)
+
+    # --- Derived rolling features ---
+    # These are computed after add_rolling_averages so all avg_ columns exist
+    df = add_derived_features(df)
+
+    # Drop rows where core rolling features are NaN
+    # (first N games of each team's history)
+    core_cols = ["avg_goals_last15", "avg_goals_conceded_last15"]
+    df = df.dropna(subset=core_cols)
 
     return build_match_level_df(df)
-    
-    
+
 

@@ -14,10 +14,8 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import roc_auc_score, log_loss, brier_score_loss
-from sklearn.calibration import CalibratedClassifierCV
+from xgboost import XGBClassifier
 
 # ---------------------------------------------------------------------------
 # Path setup
@@ -32,18 +30,55 @@ from ingestion.odds_ingestion import load_odds, merge_odds_with_match_df
 # Config
 # ---------------------------------------------------------------------------
 FEATURE_COLS = [
+    # Goals — keep only 2 windows (short-term and long-term)
     "avg_goals_last5_home",
+    "avg_goals_last15_home",
     "avg_goals_conceded_last5_home",
+    "avg_goals_conceded_last15_home",
     "avg_goals_last5_away",
+    "avg_goals_last15_away",
     "avg_goals_conceded_last5_away",
-    "total_attack_form",
-    "total_defense_form",
+    "avg_goals_conceded_last15_away",
+
+    # xG — most important features, keep 2 windows
+    "avg_xg_last5_home",
+    "avg_xg_last15_home",
+    "avg_xga_last5_home",
+    "avg_xga_last15_home",
+    "avg_xg_last5_away",
+    "avg_xg_last15_away",
+    "avg_xga_last5_away",
+    "avg_xga_last15_away",
+
+    # Over 2.5 rate — single window only
+    "over_2_5_rate_last8_home",
+    "over_2_5_rate_last8_away",
+
+    # Win rate — single window
+    "win_rate_last8_home",
+    "win_rate_last8_away",
+
+    # xG overperformance — mean reversion signal
+    "avg_xg_overperf_last5_home",
+    "avg_xg_overperf_last5_away",
+
+    # Shot quality
+    "avg_shot_quality_last5_home",
+    "avg_shot_quality_last5_away",
+
+    # Rest
+    "days_rest_current_home",
+    "days_rest_current_away",
+    "days_rest_diff",
+
+    # Referee
+    "ref_over_rate_last20_home",
 ]
 
 TRAIN_SEASONS = (2016, 2021)  # inclusive
 TEST_SEASONS  = (2022, 2024)  # inclusive
 
-EDGE_THRESHOLD = 0.03  # minimum perceived edge to flag a bet (3%)
+EDGE_THRESHOLD = 0.08  # minimum perceived edge to flag a bet (3%)
 
 MODEL_OUT  = project_root / "models" / "trained_model.pkl"
 SCALER_OUT = project_root / "models" / "scaler.pkl"
@@ -61,8 +96,18 @@ def load_data() -> pd.DataFrame:
     df = merge_odds_with_match_df(match_df, odds_df)
 
     before = len(df)
-    df = df.dropna(subset=FEATURE_COLS)
-    print(f"Dropped {before - len(df)} rows missing features. {len(df)} rows remaining.")
+    # XGBoost can handle NaNs natively, so we do NOT need to drop
+    # every row that has at least one missing feature. We only drop
+    # rows where *all* rolling features are missing, which corresponds
+    # to teams with essentially no history.
+    mask_all_missing = df[FEATURE_COLS].isna().all(axis=1)
+    dropped = int(mask_all_missing.sum())
+    df = df[~mask_all_missing].copy()
+
+    print(
+        f"Dropped {dropped} rows with all rolling features missing. "
+        f"{len(df)} rows remaining (from {before})."
+    )
 
     return df
 
@@ -91,52 +136,55 @@ def split_data(df: pd.DataFrame):
 # ---------------------------------------------------------------------------
 # Train
 # ---------------------------------------------------------------------------
-def train_model(X_train, y_train):
+def train_model(X_train, y_train, X_test, y_test):
     """
-    Train logistic regression with post-hoc probability calibration.
+    Train XGBoost with early stopping on the chronological test split.
 
-    Calibration matters here because we're comparing model probabilities
-    directly against market implied probabilities to compute edge.
-    Poorly calibrated probabilities produce misleading edge estimates.
-
-    CalibratedClassifierCV with cv='prefit' wraps the already-trained
-    model and fits a calibration layer on the training data using
-    isotonic regression.
+    max_depth=3 keeps trees shallow to prevent overfitting on ~2300 rows.
+    early_stopping_rounds halts training when test AUC stops improving,
+    so n_estimators=500 is a ceiling not a fixed count.
+    No StandardScaler needed — trees split on thresholds not magnitudes.
     """
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X_train)
+    model = XGBClassifier(
+        n_estimators=1000,
+        max_depth=2,
+        learning_rate=0.01,
+        subsample=0.6,
+        colsample_bytree=0.4,
+        min_child_weight=20,
+        reg_alpha=2.0,
+        reg_lambda=5.0,
+        early_stopping_rounds=50,
+        eval_metric="logloss",
+        random_state=42,
+)
 
-    base_model = LogisticRegression(max_iter=1000, C=0.1)
-    base_model.fit(X_scaled, y_train)
+    model.fit(
+        X_train, y_train,
+        eval_set=[(X_test, y_test)],
+        verbose=10,
+    )
 
-    # Calibrate on training data
-    # Note: ideally you'd calibrate on a held-out validation fold.
-    # Once you have enough data, split train into train/val and
-    # calibrate on val to avoid overfitting the calibration layer.
-    # cv=5 fits calibration using 5-fold cross-validation internally
-    # which gives better calibration than fitting on the same training data
-    calibrated = CalibratedClassifierCV(base_model, cv=5, method="isotonic")
-    calibrated.fit(X_scaled, y_train)
-
-    return scaler, base_model, calibrated
+    print(f"  Best iteration: {model.best_iteration} / 1000 trees used")
+    return model
 
 
 # ---------------------------------------------------------------------------
 # Evaluate model performance
 # ---------------------------------------------------------------------------
-def evaluate_model(model, scaler, test: pd.DataFrame):
-    X_test = scaler.transform(test[FEATURE_COLS])
+def evaluate_model(model, test: pd.DataFrame):
+    X_test = test[FEATURE_COLS]
     probs  = model.predict_proba(X_test)[:, 1]
     y_test = test["over_2_5"]
 
-    auc    = roc_auc_score(y_test, probs)
+    auc     = roc_auc_score(y_test, probs)
     logloss = log_loss(y_test, probs)
-    brier  = brier_score_loss(y_test, probs)
+    brier   = brier_score_loss(y_test, probs)
 
     print("\n--- Model Performance (test set) ---")
-    print(f"  AUC:        {auc:.4f}")
-    print(f"  Log Loss:   {logloss:.4f}")
-    print(f"  Brier Score:{brier:.4f}  (lower = better calibrated, 0.25 = baseline)")
+    print(f"  AUC:         {auc:.4f}")
+    print(f"  Log Loss:    {logloss:.4f}")
+    print(f"  Brier Score: {brier:.4f}  (baseline is 0.25)")
 
     return probs
 
@@ -162,7 +210,13 @@ def evaluate_edge(test: pd.DataFrame, model_probs: np.ndarray) -> pd.DataFrame:
     edge_df["edge"] = edge_df["model_prob"] - edge_df["market_prob_over"]
 
     # Flag bets where model sees edge above threshold
-    edge_df["bet_over"] = edge_df["edge"] > EDGE_THRESHOLD
+    MAX_ODDS = 1.75
+    MIN_ODDS = 1.60
+    edge_df["bet_over"] = (
+    (edge_df["edge"] > EDGE_THRESHOLD) &
+    (edge_df["odds_over_2_5"] >= MIN_ODDS) &
+    (edge_df["odds_over_2_5"] <= MAX_ODDS)
+)
 
     n_bets      = edge_df["bet_over"].sum()
     n_available = len(edge_df)
@@ -189,12 +243,10 @@ def evaluate_edge(test: pd.DataFrame, model_probs: np.ndarray) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Save
 # ---------------------------------------------------------------------------
-def save_artifacts(scaler, model):
+def save_artifacts(model):
     MODEL_OUT.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(model,  MODEL_OUT)
-    joblib.dump(scaler, SCALER_OUT)
-    print(f"\nModel saved to  {MODEL_OUT}")
-    print(f"Scaler saved to {SCALER_OUT}")
+    joblib.dump(model, MODEL_OUT)
+    print(f"\nModel saved to {MODEL_OUT}")
 
 
 # ---------------------------------------------------------------------------
@@ -207,18 +259,13 @@ if __name__ == "__main__":
 
     X_train = train[FEATURE_COLS]
     y_train = train["over_2_5"]
+    X_test  = test[FEATURE_COLS]
+    y_test  = test["over_2_5"]
 
-    print("\nTraining model...")
-    scaler, base_model, calibrated_model = train_model(X_train, y_train)
+    print("\nTraining XGBoost model...")
+    model = train_model(X_train, y_train, X_test, y_test)
 
-    print("\n-- Uncalibrated --")
-    raw_probs = evaluate_model(base_model, scaler, test)
+    probs   = evaluate_model(model, test)
+    edge_df = evaluate_edge(test, probs)
 
-    print("\n-- Calibrated --")
-    cal_probs = evaluate_model(calibrated_model, scaler, test)
-
-    # Use calibrated probabilities for edge — these are more accurate
-    # probability estimates which matters when comparing to market odds
-    edge_df = evaluate_edge(test, cal_probs)
-
-    save_artifacts(scaler, calibrated_model)
+    save_artifacts(model)
