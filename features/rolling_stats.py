@@ -189,6 +189,44 @@ def add_derived_features(
                 )
             )
 
+    # Short-window momentum — how much the team's last 3 games deviate
+    # from their 15-game baseline. Captures heating up / cooling down.
+    # Positive = more dangerous than usual, negative = going cold.
+    if "avg_xg_last3" not in df.columns and "xg" in df.columns:
+        df["avg_xg_last3"] = _rolling_mean_by_team(df, "xg", 3)
+    if "avg_goals_last3" not in df.columns and "goals" in df.columns:
+        df["avg_goals_last3"] = _rolling_mean_by_team(df, "goals", 3)
+
+    if "avg_xg_last3" in df.columns and "avg_xg_last15" in df.columns:
+        df["xg_momentum_last3"] = df["avg_xg_last3"] - df["avg_xg_last15"]
+
+    if "avg_goals_last3" in df.columns and "avg_goals_last15" in df.columns:
+        df["goals_momentum_last3"] = df["avg_goals_last3"] - df["avg_goals_last15"]
+
+    # Tighter over 2.5 rate window — more responsive to recent form
+    if "over_2_5" in df.columns:
+        df["over_2_5_rate_last5"] = _rolling_mean_by_team(df, "over_2_5", 5)
+    
+    # Referee short-window over rate — more responsive than last20
+    if "referee" in df.columns and "over_2_5" in df.columns:
+        df["ref_over_rate_last10"] = (
+            df.groupby("referee")["over_2_5"].transform(
+                lambda s: s.shift(1)
+                           .rolling(window=10, min_periods=5)
+                           .mean()
+            )
+        )
+
+    # Referee foul rate — high foul refs disrupt flow and suppress goals
+    if "referee" in df.columns and "fouls" in df.columns:
+        df["ref_foul_rate_last20"] = (
+            df.groupby("referee")["fouls"].transform(
+                lambda s: s.shift(1)
+                           .rolling(window=20, min_periods=10)
+                           .mean()
+            )
+        )
+
     return df
 
 

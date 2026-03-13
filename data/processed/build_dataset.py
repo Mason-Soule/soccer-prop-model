@@ -62,6 +62,17 @@ def build_match_level_df(df):
         match_df["avg_goals_last5_home"] + match_df["avg_goals_last5_away"]
     )
 
+    # Momentum — combined short-term deviation from baseline for both teams
+    # High positive = both teams in scoring form, strong over signal
+    if "xg_momentum_last3_home" in match_df.columns:
+        match_df["combined_xg_momentum"] = (
+            match_df["xg_momentum_last3_home"] + match_df["xg_momentum_last3_away"]
+        )
+    if "goals_momentum_last3_home" in match_df.columns:
+        match_df["combined_goals_momentum"] = (
+            match_df["goals_momentum_last3_home"] + match_df["goals_momentum_last3_away"]
+        )
+        
 # --- Head-to-head average goals ---
     # Average total goals in the last 5 meetings between this exact pairing.
     # fixture_key sorts both team names so A-vs-B and B-vs-A are the same key.

@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 # Understat season parameter is the START year of the season
 # e.g. 2016 = 2016/17 season
 # ---------------------------------------------------------------------------
-SEASONS = [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023]
+SEASONS = [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023,2024,2025]
 
 # ---------------------------------------------------------------------------
 # Team name map — Understat full name -> your DB name

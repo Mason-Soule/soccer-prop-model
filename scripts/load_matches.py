@@ -13,7 +13,7 @@ conn = psycopg2.connect(
     port="5432"
 )
 
-year = "2023-24"
+year = "2025-26"
 
 cursor = conn.cursor()
 
@@ -41,7 +41,12 @@ team_lookup = {name: id for id, name in cursor.fetchall()}
 
 # --- Insert Matches ---
 for _, row in df.iterrows():
-    match_date = pd.to_datetime(row["Date"], format="%d/%m/%y").date()
+    for fmt in ("%d/%m/%y", "%d/%m/%Y"):
+        try:
+            match_date = pd.to_datetime(row["Date"], format=fmt).date()
+            break
+        except ValueError:
+            continue
     home_id = team_lookup[row["HomeTeam"]]
     away_id = team_lookup[row["AwayTeam"]]
     cursor.execute(

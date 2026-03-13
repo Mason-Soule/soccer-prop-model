@@ -71,8 +71,6 @@ FEATURE_COLS = [
     "days_rest_current_away",
     "days_rest_diff",
 
-    # Referee
-    "ref_over_rate_last20_home",
 
     # Combined attack strength — sum of both teams' rolling xG/goals
     # Directly encodes total goal expectation without the model inferring addition
@@ -83,12 +81,21 @@ FEATURE_COLS = [
 
     # Head-to-head fixture tendency
     "h2h_avg_goals_last5",
+
+    # Form momentum — short-term deviation from baseline
+    "combined_xg_momentum",
+    "combined_goals_momentum",
+    "over_2_5_rate_last5_home",
+    "over_2_5_rate_last5_away",
+    "ref_over_rate_last10_home",
+    "ref_over_rate_last20_home",
+    "ref_foul_rate_last20_home",
 ]
 
 TRAIN_SEASONS = (2016, 2021)  # inclusive
 TEST_SEASONS  = (2022, 2024)  # inclusive
 
-EDGE_THRESHOLD = 0.08  # minimum perceived edge to flag a bet (3%)
+EDGE_THRESHOLD = 0.11  # minimum perceived edge to flag a bet (3%)
 
 MODEL_OUT  = project_root / "models" / "trained_model.pkl"
 SCALER_OUT = project_root / "models" / "scaler.pkl"

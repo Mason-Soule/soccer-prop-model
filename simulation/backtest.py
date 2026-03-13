@@ -71,7 +71,6 @@ FEATURE_COLS = [
     "days_rest_current_home",
     "days_rest_current_away",
     "days_rest_diff",
-    "ref_over_rate_last20_home",
     "combined_xg_last5",
     "combined_xg_last15",
     "combined_goals_last5",
@@ -79,16 +78,24 @@ FEATURE_COLS = [
     "league_avg_goals_last30",
     # Head-to-head fixture tendency
     "h2h_avg_goals_last5",
+    # Form momentum — short-term deviation from baseline
+    "combined_xg_momentum",
+    "combined_goals_momentum",
+    "over_2_5_rate_last5_home",
+    "over_2_5_rate_last5_away",
+    "ref_over_rate_last10_home",
+    "ref_over_rate_last20_home",
+    "ref_foul_rate_last20_home",
 ]
 
 # Minimum seasons of training data before we start predicting
 # 2 seasons minimum so the model has enough data to learn from
-MIN_TRAIN_SEASONS = 4
+MIN_TRAIN_SEASONS = 5
 
 # Edge threshold — must match train.py
-EDGE_THRESHOLD = 0.08
+EDGE_THRESHOLD = 0.11
 MAX_ODDS = 1.75
-MIN_ODDS = 1.60
+MIN_ODDS = 1.6
 
 # Kelly fraction — fractional Kelly to reduce variance
 # Full Kelly is theoretically optimal but has huge drawdowns in practice
@@ -266,10 +273,15 @@ def run_fold(df: pd.DataFrame, fold: dict) -> pd.DataFrame:
         test_df.loc[has_odds, "market_prob_over"]
     )
     test_df["bet_over"] = (
-    (test_df["edge"] > EDGE_THRESHOLD) &
-    (test_df["odds_over_2_5"] >= MIN_ODDS) &
-    (test_df["odds_over_2_5"] <= MAX_ODDS)
-)
+        (
+            # Calibrated zone 1: moderate edge, model is accurate here
+            ((test_df["edge"] >= 0.11) & (test_df["edge"] < 0.13)) |
+            # Calibrated zone 2: high edge, model is accurate here
+            (test_df["edge"] >= 0.15)
+        ) &
+        (test_df["odds_over_2_5"] >= MIN_ODDS) &
+        (test_df["odds_over_2_5"] <= MAX_ODDS)
+    )
 
     n_bets = test_df["bet_over"].sum()
     print(
@@ -434,12 +446,7 @@ def aggregate_results(all_predictions: pd.DataFrame) -> None:
             if i % 50 == 0:
                 print(f"    Bet {i:>4}: £{b:,.2f}")
         
-                
-
         
-        
-
-
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------

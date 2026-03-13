@@ -51,6 +51,8 @@ logger = logging.getLogger(__name__)
 # Season config — mirrors the seasons you load via load_matches.py
 # ---------------------------------------------------------------------------
 SEASONS = {
+    "2014-15": "1415",
+    "2015-16": "1516",
     "2016-17": "1617",
     "2017-18": "1718",
     "2018-19": "1819",
@@ -60,6 +62,7 @@ SEASONS = {
     "2022-23": "2223",
     "2023-24": "2324",
     "2024-25": "2425",
+    "2025-26": "2526",
 }
 
 BASE_URL = "https://www.football-data.co.uk/mmz4281/{code}/E0.csv"
