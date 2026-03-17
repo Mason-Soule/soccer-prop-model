@@ -36,6 +36,8 @@ load_dotenv()
 project_root = Path(__file__).parent.parent.absolute()
 sys.path.insert(0, str(project_root))
 
+from config.leagues.epl import EPL
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -50,7 +52,8 @@ logger = logging.getLogger(__name__)
 # Understat season parameter is the START year of the season
 # e.g. 2016 = 2016/17 season
 # ---------------------------------------------------------------------------
-SEASONS = [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023,2024,2025]
+
+SEASONS = EPL.understat_seasons
 
 # ---------------------------------------------------------------------------
 # Team name map — Understat full name -> your DB name
@@ -352,9 +355,6 @@ def run_xg_ingestion() -> None:
     verify_xg_coverage(engine)
 
     logger.info("\nDone. Next steps:")
-    logger.info("  1. Add 'xg' and 'xga' to DEFAULT_STATS in features/rolling_stats.py")
-    logger.info("  2. Add xG feature columns to FEATURE_COLS in models/train.py")
-    logger.info("  3. Run: python models/train.py")
 
 
 if __name__ == "__main__":

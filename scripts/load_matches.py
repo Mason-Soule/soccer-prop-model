@@ -102,7 +102,8 @@ for _, row in df.iterrows():
             yellow_cards,
             red_cards
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (team_id, match_id) DO NOTHING;
         """,
         (
             home_id,
@@ -133,7 +134,9 @@ for _, row in df.iterrows():
             yellow_cards,
             red_cards
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT DO NOTHING
+        RETURNING match_id;
         """,
         (
             away_id,

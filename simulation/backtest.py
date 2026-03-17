@@ -37,56 +37,11 @@ from xgboost import XGBClassifier
 project_root = Path(__file__).parent.parent.absolute()
 sys.path.insert(0, str(project_root))
 
-from data.processed.build_dataset import build_dataframe
-from ingestion.odds_ingestion import load_odds, merge_odds_with_match_df
-
-# ---------------------------------------------------------------------------
-# Config — must match train.py exactly
-# ---------------------------------------------------------------------------
-FEATURE_COLS = [
-    "avg_goals_last5_home",
-    "avg_goals_last15_home",
-    "avg_goals_conceded_last5_home",
-    "avg_goals_conceded_last15_home",
-    "avg_goals_last5_away",
-    "avg_goals_last15_away",
-    "avg_goals_conceded_last5_away",
-    "avg_goals_conceded_last15_away",
-    "avg_xg_last5_home",
-    "avg_xg_last15_home",
-    "avg_xga_last5_home",
-    "avg_xga_last15_home",
-    "avg_xg_last5_away",
-    "avg_xg_last15_away",
-    "avg_xga_last5_away",
-    "avg_xga_last15_away",
-    "over_2_5_rate_last8_home",
-    "over_2_5_rate_last8_away",
-    "win_rate_last8_home",
-    "win_rate_last8_away",
-    "avg_xg_overperf_last5_home",
-    "avg_xg_overperf_last5_away",
-    "avg_shot_quality_last5_home",
-    "avg_shot_quality_last5_away",
-    "days_rest_current_home",
-    "days_rest_current_away",
-    "days_rest_diff",
-    "combined_xg_last5",
-    "combined_xg_last15",
-    "combined_goals_last5",
-    # League era baseline
-    "league_avg_goals_last30",
-    # Head-to-head fixture tendency
-    "h2h_avg_goals_last5",
-    # Form momentum — short-term deviation from baseline
-    "combined_xg_momentum",
-    "combined_goals_momentum",
-    "over_2_5_rate_last5_home",
-    "over_2_5_rate_last5_away",
-    "ref_over_rate_last10_home",
-    "ref_over_rate_last20_home",
-    "ref_foul_rate_last20_home",
-]
+from core.features import FEATURE_COLS, validate_feature_cols
+from core.model import make_model, train_model
+from core.staking import is_value_bet, kelly_stake
+from config.leagues.epl import EPL
+from core.data_loader import load_data
 
 # Minimum seasons of training data before we start predicting
 # 2 seasons minimum so the model has enough data to learn from
@@ -107,48 +62,6 @@ STARTING_BANKROLL = 1000.0
 
 OUTPUT_DIR = project_root / "simulation"
 OUTPUT_DIR.mkdir(exist_ok=True)
-
-
-# ---------------------------------------------------------------------------
-# Model factory — identical config to train.py
-# ---------------------------------------------------------------------------
-def make_model():
-    return XGBClassifier(
-        n_estimators=1000,
-        max_depth=2,
-        learning_rate=0.01,
-        subsample=0.6,
-        colsample_bytree=0.4,
-        min_child_weight=20,
-        reg_alpha=2.0,
-        reg_lambda=5.0,
-        early_stopping_rounds=50,
-        eval_metric="logloss",
-        random_state=42,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Load data
-# ---------------------------------------------------------------------------
-def load_data() -> pd.DataFrame:
-    print("Building match features from DB...")
-    match_df = build_dataframe()
-
-    print("Loading odds data...")
-    odds_df = load_odds()
-    df = merge_odds_with_match_df(match_df, odds_df)
-
-    # Deduplicate any columns introduced by the odds merge
-    df = df.loc[:, ~df.columns.duplicated()]
-
-    mask_all_missing = df[FEATURE_COLS].isna().all(axis=1)
-    df = df[~mask_all_missing].copy()
-
-    print(f"Total rows loaded: {len(df)}")
-    print(f"Seasons available: {sorted(df['season_start'].unique())}")
-    return df
-
 
 # ---------------------------------------------------------------------------
 # Walk-forward folds
@@ -272,17 +185,10 @@ def run_fold(df: pd.DataFrame, fold: dict) -> pd.DataFrame:
         test_df.loc[has_odds, "model_prob"] -
         test_df.loc[has_odds, "market_prob_over"]
     )
-    test_df["bet_over"] = (
-        (
-            # Calibrated zone 1: moderate edge, model is accurate here
-            ((test_df["edge"] >= 0.11) & (test_df["edge"] < 0.13)) |
-            # Calibrated zone 2: high edge, model is accurate here
-            (test_df["edge"] >= 0.15)
-        ) &
-        (test_df["odds_over_2_5"] >= MIN_ODDS) &
-        (test_df["odds_over_2_5"] <= MAX_ODDS)
+    test_df["bet_over"] = test_df.apply(
+        lambda r: is_value_bet(r["edge"], r["odds_over_2_5"], EPL),
+        axis=1,
     )
-
     n_bets = test_df["bet_over"].sum()
     print(
         f"  Fold {fold['fold']}: "

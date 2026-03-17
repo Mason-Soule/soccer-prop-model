@@ -36,6 +36,7 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 project_root = Path(__file__).parent.parent.absolute()
 sys.path.insert(0, str(project_root))
+from config.leagues.epl import EPL
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -50,22 +51,8 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Season config — mirrors the seasons you load via load_matches.py
 # ---------------------------------------------------------------------------
-SEASONS = {
-    "2014-15": "1415",
-    "2015-16": "1516",
-    "2016-17": "1617",
-    "2017-18": "1718",
-    "2018-19": "1819",
-    "2019-20": "1920",
-    "2020-21": "2021",
-    "2021-22": "2122",
-    "2022-23": "2223",
-    "2023-24": "2324",
-    "2024-25": "2425",
-    "2025-26": "2526",
-}
-
-BASE_URL = "https://www.football-data.co.uk/mmz4281/{code}/E0.csv"
+SEASONS  = EPL.fd_seasons
+BASE_URL = "https://www.football-data.co.uk/mmz4281/{code}/" + EPL.fd_division + ".csv"
 
 # Pinnacle closing odds are the sharpest signal.
 # PSC columns only appear consistently from ~2019-20 onward.
@@ -83,72 +70,8 @@ RAW_DIR = project_root / "data" / "raw" / "epl"
 # for most teams. These mappings cover cases where football-data.co.uk
 # uses different names across seasons (e.g. "Nott'm Forest" vs "Nottm Forest").
 # If audit_name_mismatches() reports new mismatches, extend this map.
-TEAM_NAME_MAP = {
-    # Nottingham Forest — seen as multiple spellings across seasons
-    "Nottm Forest":               "Nott'm Forest",
-    "Nottingham Forest":          "Nott'm Forest",
 
-    # Manchester clubs — some seasons use full names
-    "Manchester United":          "Man United",
-    "Manchester City":            "Man City",
-
-    # Newcastle — occasionally written with United
-    "Newcastle United":           "Newcastle",
-
-    # Wolves — full name appears in some seasons
-    "Wolverhampton":              "Wolves",
-    "Wolverhampton Wanderers":    "Wolves",
-
-    # West Brom — full name variant
-    "West Bromwich Albion":       "West Brom",
-    "West Bromwich":              "West Brom",
-
-    # Sheffield United — abbreviated variant
-    "Sheffield Utd":              "Sheffield United",
-
-    # Leicester — full name variant
-    "Leicester City":             "Leicester",
-
-    # Leeds — full name variant
-    "Leeds United":               "Leeds",
-
-    # Tottenham — Spurs alias used in older data
-    "Spurs":                      "Tottenham",
-    "Tottenham Hotspur":          "Tottenham",
-
-    # Brighton — full name variant
-    "Brighton & Hove Albion":     "Brighton",
-    "Brighton and Hove Albion":   "Brighton",
-
-    # Stoke — full name variant
-    "Stoke City":                 "Stoke",
-
-    # Norwich — full name variant
-    "Norwich City":               "Norwich",
-
-    # Huddersfield — full name variant
-    "Huddersfield Town":          "Huddersfield",
-
-    # Cardiff — full name variant
-    "Cardiff City":               "Cardiff",
-
-    # Hull — full name variant
-    "Hull City":                  "Hull",
-
-    # Swansea — full name variant
-    "Swansea City":               "Swansea",
-
-    # Aston Villa — occasional variant
-    "Aston Villa":                "Aston Villa",
-
-    "Ipswich Town": "Ipswich",
-
-    # Burnley, Chelsea, Arsenal, Everton, Southampton, West Ham,
-    # Liverpool, Bournemouth, Watford, Middlesbrough, Fulham,
-    # Sunderland, Crystal Palace, Brentford, Ipswich
-    # — all match exactly, no mapping needed
-}
-
+TEAM_NAME_MAP = EPL.fd_team_map
 
 # ---------------------------------------------------------------------------
 # Download
