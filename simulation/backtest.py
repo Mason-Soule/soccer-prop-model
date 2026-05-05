@@ -31,34 +31,23 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-from sklearn.metrics import roc_auc_score, log_loss
-from xgboost import XGBClassifier
+from sklearn.metrics import roc_auc_score
 
 project_root = Path(__file__).parent.parent.absolute()
 sys.path.insert(0, str(project_root))
 
-from core.features import FEATURE_COLS, validate_feature_cols
-from core.model import make_model, train_model
-from core.staking import is_value_bet, kelly_stake
+from core.features import FEATURE_COLS
+from core.model import make_model
+from core.staking import is_value_bet, suggested_stake
 from config.leagues.epl import EPL
 from core.data_loader import load_data
 
 # Minimum seasons of training data before we start predicting
 # 2 seasons minimum so the model has enough data to learn from
-MIN_TRAIN_SEASONS = 5
-
-# Edge threshold — must match train.py
-EDGE_THRESHOLD = 0.11
-MAX_ODDS = 1.75
-MIN_ODDS = 1.6
-
-# Kelly fraction — fractional Kelly to reduce variance
-# Full Kelly is theoretically optimal but has huge drawdowns in practice
-# Quarter Kelly (0.15) is more conservative and realistic
-KELLY_FRACTION = 0.15
+MIN_TRAIN_SEASONS = EPL.min_train_seasons
 
 # Starting bankroll for simulation
-STARTING_BANKROLL = 1000.0
+STARTING_BANKROLL = EPL.starting_bankroll
 
 OUTPUT_DIR = project_root / "simulation"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -94,47 +83,6 @@ def get_folds(df: pd.DataFrame) -> list[dict]:
         })
 
     return folds
-
-
-# ---------------------------------------------------------------------------
-# Kelly staking
-# ---------------------------------------------------------------------------
-def kelly_stake(edge: float, odds: float, fraction: float = KELLY_FRACTION) -> float:
-    """
-    Fractional Kelly criterion stake as a proportion of bankroll.
-
-    Kelly formula: f = (bp - q) / b
-        b = decimal odds - 1 (net odds)
-        p = model probability of winning
-        q = 1 - p
-
-    Fractional Kelly multiplies by `fraction` to reduce variance.
-    Negative Kelly = no bet (model sees negative edge).
-
-    Args:
-        edge:     model_prob - market_prob (vig-free)
-        odds:     decimal odds for the bet
-        fraction: Kelly multiplier (0.25 = quarter Kelly)
-
-    Returns:
-        Stake as proportion of current bankroll (0 if no edge)
-    """
-    # Reconstruct model probability from edge and market prob
-    # edge = model_prob - market_prob  →  model_prob = market_prob + edge
-    # We need model_prob directly for Kelly
-    b = odds - 1.0
-    # market_prob is baked into edge — use model_prob directly
-    # model_prob = market_prob + edge, but we pass edge here
-    # So: p = (market_prob_over + edge), which we don't have directly
-    # Instead use simplified Kelly: stake proportional to edge / odds
-    # This is a common approximation when edge is small
-    if edge <= 0:
-        return 0.0
-
-    # Full Kelly: f = edge / (odds - 1)
-    # Rationale: how much of your edge are you risking per unit of odds
-    f = edge / b
-    return max(0.0, f * fraction)
 
 
 # ---------------------------------------------------------------------------
@@ -268,7 +216,7 @@ def aggregate_results(all_predictions: pd.DataFrame) -> None:
 
     # --- Kelly staking simulation ---
     if len(bet_preds) > 0 and "odds_over_2_5" in bet_preds.columns:
-        print(f"\n--- Kelly Staking Simulation (fraction={KELLY_FRACTION}) ---")
+        print(f"\n--- Kelly Staking Simulation (fraction={EPL.kelly_fraction}) ---")
         print(f"  Starting bankroll: £{STARTING_BANKROLL:,.2f}")
 
         bankroll = STARTING_BANKROLL
@@ -279,14 +227,8 @@ def aggregate_results(all_predictions: pd.DataFrame) -> None:
         bet_log = []
 
         for _, row in bet_preds.sort_values("date_home").iterrows():
-            if pd.isna(row["odds_over_2_5"]) or pd.isna(row["edge"]):
-                continue
-
-            stake_pct = kelly_stake(row["edge"], row["odds_over_2_5"])
-            stake     = bankroll * stake_pct
-            stake     = min(stake, bankroll * 0.05)  # hard cap: never bet >5% on one match
-
-            if stake < 1.0:  # minimum bet size
+            stake = suggested_stake(row["edge"], row["odds_over_2_5"], bankroll, EPL)
+            if stake == 0.0:
                 continue
 
             total_staked += stake

@@ -99,18 +99,11 @@ def suggested_stake(
     odds: float,
     bankroll: float,
     league: LeagueConfig,
+    hard_cap: float = 0.05,
+    min_stake: float = 1.0,
 ) -> float:
-    """
-    Calculate the suggested stake in £ given the current bankroll.
-
-    Args:
-        edge:     model_prob - market_prob
-        odds:     decimal odds
-        bankroll: current bankroll in £
-        league:   LeagueConfig
-
-    Returns:
-        Stake in £, rounded to 2 decimal places
-    """
     fraction = kelly_stake(edge, odds, league)
-    return round(bankroll * fraction, 2)
+    stake = bankroll * fraction
+    stake = min(stake, bankroll * hard_cap)
+    stake = max(stake, min_stake) if stake > 0 else 0.0
+    return round(stake, 2)

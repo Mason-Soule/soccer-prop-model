@@ -46,12 +46,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+from core.staking import suggested_stake
+from config.leagues.epl import EPL
+
 PREDICTIONS_DIR  = project_root / "predictions"
 HISTORY_DIR      = PREDICTIONS_DIR / "history"
 LIVE_RESULTS_CSV = PREDICTIONS_DIR / "live_results.csv"
-STARTING_BANKROLL = 1000.0
-KELLY_FRACTION    = 0.15
-KELLY_FRACTION_WIDE = 0.10  # for bets with odds > 1.75
+STARTING_BANKROLL = EPL.starting_bankroll
 
 
 # ---------------------------------------------------------------------------
@@ -197,14 +198,10 @@ def calculate_pnl(df: pd.DataFrame) -> pd.DataFrame:
         edge = row["edge"]
         odds = row["odds_over_2_5"]
 
-        if edge <= 0:
-            continue
+        stake = suggested_stake(row["edge"], row["odds_over_2_5"], bankroll, EPL)
 
-        b = odds - 1.0
-        fraction = KELLY_FRACTION if odds <= 1.75 else KELLY_FRACTION_WIDE
-        stake = bankroll * (edge / b) * fraction
-        stake = min(stake, bankroll * 0.05)  # hard cap 5%
-        stake = max(stake, 1.0)
+        if stake == 0.0:
+            continue
 
         won = int(row["over_2_5"]) == 1
         if won:
@@ -279,10 +276,10 @@ def print_dashboard(
                 edge_col = f"[yellow]{edge_str}[/]"
 
             stake_str = (
-            f"£{row['suggested_stake']:.2f}"
-            if "suggested_stake" in row and pd.notna(row.get("suggested_stake"))
-            else "-"
-        )
+                f"£{row['suggested_stake']:.2f}"
+                if "suggested_stake" in row and pd.notna(row.get("suggested_stake"))
+                else "-"
+            )
             pt.add_row(
                 f"{row['team_name_home']} vs {row['team_name_away']}",
                 date_str,
@@ -348,6 +345,11 @@ def print_dashboard(
             f"[bold]{max_dd:.1%}[/]\n[dim]bank: £{final_bank:,.2f}[/]",
             title="Max Drawdown", border_style="dim"
         ),
+        Panel(
+            f"[bold]{avg_edge:+.1%}[/]\n[dim]avg edge on bets[/]",
+            title="Avg Edge", border_style="dim"
+        ),
+
     ]
     console.print(Columns(panels))
 

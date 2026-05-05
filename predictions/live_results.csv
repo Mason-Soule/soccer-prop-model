@@ -1,3 +1,5 @@
 date,home,away,odds,model_prob,market_prob,edge,stake,result,total_goals,bankroll
 2026-03-15,Nott'm Forest,Fulham,1.95,0.617,0.497,0.12,12.62,LOSS,0,987.38
 2026-03-15,Crystal Palace,Leeds,1.99,0.613,0.461,0.152,15.15,LOSS,0,972.24
+2026-04-11,Arsenal,Bournemouth,1.6,0.692,0.575,0.118,28.58,WIN,3,989.39
+2026-04-12,Crystal Palace,Newcastle,1.72,0.658,0.547,0.11,22.72,WIN,3,1005.75

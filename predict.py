@@ -53,11 +53,8 @@ logger = logging.getLogger(__name__)
 
 # Edge zones — calibrated from backtest analysis
 # Bets outside these zones showed negative outperformance historically
-MIN_ODDS       = 1.60
-MAX_ODDS       = 2.00
-KELLY_FRACTION = 0.15
-KELLY_FRACTION_WIDE = 0.10 
-STARTING_BANKROLL = 1000.0
+
+STARTING_BANKROLL = EPL.starting_bankroll
 
 # The Odds API config
 ODDS_API_KEY    = os.getenv("ODDS_API_KEY")
@@ -66,47 +63,7 @@ SPORT_KEY       = "soccer_epl"
 MARKETS         = "totals"       # over/under markets
 REGIONS         = "eu"           # European decimal odds
 ODDS_FORMAT     = "decimal"
-
-# ---------------------------------------------------------------------------
-# Team name mapping — The Odds API names → your DB names
-# ---------------------------------------------------------------------------
-ODDS_API_TO_DB = {
-    "Manchester City":        "Man City",
-    "Manchester United":      "Man United",
-    "Newcastle United":       "Newcastle",
-    "Tottenham Hotspur":      "Tottenham",
-    "Wolverhampton Wanderers":"Wolves",
-    "Nottingham Forest":      "Nott'm Forest",
-    "West Ham United":        "West Ham",
-    "Brighton & Hove Albion": "Brighton",
-    "Leicester City":         "Leicester",
-    "Leeds United":           "Leeds",
-    "West Bromwich Albion":   "West Brom",
-    "Sheffield United":       "Sheffield United",
-    "Aston Villa":            "Aston Villa",
-    "AFC Bournemouth":        "Bournemouth",
-    "Ipswich Town":           "Ipswich",
-    "Huddersfield Town":      "Huddersfield",
-    "Cardiff City":           "Cardiff",
-    "Hull City":              "Hull",
-    "Swansea City":           "Swansea",
-    "Norwich City":           "Norwich",
-    "Stoke City":             "Stoke",
-    "Burnley":                "Burnley",
-    "Brentford":              "Brentford",
-    "Fulham":                 "Fulham",
-    "Crystal Palace":         "Crystal Palace",
-    "Everton":                "Everton",
-    "Southampton":            "Southampton",
-    "Arsenal":                "Arsenal",
-    "Chelsea":                "Chelsea",
-    "Liverpool":              "Liverpool",
-    "Sunderland":             "Sunderland",
-    "Middlesbrough":          "Middlesbrough",
-    "Watford":                "Watford",
-    "Brighton and Hove Albion": "Brighton",
-    "Sunderland AFC":           "Sunderland",
-}
+ODDS_API_TO_DB = EPL.odds_api_team_map
 
 
 # ---------------------------------------------------------------------------
@@ -282,8 +239,6 @@ def build_features_for_fixtures(
     # Home feature columns
     home_feat_cols = [c for c in FEATURE_COLS if c.endswith("_home")]
     away_feat_cols = [c for c in FEATURE_COLS if c.endswith("_away")]
-    shared_cols    = [c for c in FEATURE_COLS
-                      if not c.endswith("_home") and not c.endswith("_away")]
 
     rows = []
     for _, fixture in fixtures.iterrows():
@@ -432,6 +387,10 @@ def predict_and_rank(
         axis=1,
     )
 
+
+    # Stake calculated on starting bankroll — update STARTING_BANKROLL in EPL config
+    # to reflect your current bankroll before running
+    
     fixtures_df["suggested_stake"] = fixtures_df.apply(
         lambda r: suggested_stake(r["edge"], r["odds_over_2_5"], STARTING_BANKROLL, EPL)
         if r["bet_recommended"] else 0.0,
@@ -454,7 +413,7 @@ def print_recommendations(df: pd.DataFrame) -> None:
 
     if bets.empty:
         print("\nNo bets recommended for upcoming fixtures.")
-        print("(No fixtures in calibrated edge zones 0.11-0.13 or 0.15+)")
+        print(f"(No fixtures passing edge zones {EPL.edge_zones} and odds {EPL.min_odds}-{EPL.max_odds})")
     else:
         print(f"\n{len(bets)} bet(s) recommended:\n")
         for _, row in bets.iterrows():

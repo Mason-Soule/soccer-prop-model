@@ -43,7 +43,7 @@ class LeagueConfig:
     # --- Model config ---
     min_train_seasons: int   = 5
     min_odds: float          = 1.60
-    max_odds: float          = 1.75
+    max_odds: float          = 2.10
     kelly_fraction: float    = 0.15
     kelly_fraction_wide: float = 0.10   # for bets outside calibrated odds range
     edge_zones: list         = field(default_factory=lambda: [
