@@ -160,7 +160,7 @@ EPL = LeagueConfig(
 
     min_train_seasons   = 5,
     min_odds            = 1.60,
-    max_odds            = 1.75,
+    max_odds            = 2.10,
     kelly_fraction      = 0.15,
     kelly_fraction_wide = 0.10,
     edge_zones          = [(0.11, 0.13), (0.15, None)],

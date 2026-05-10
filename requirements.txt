@@ -4,23 +4,23 @@ xgboost>=2.0.0
 scikit-learn>=1.3.0
 numpy>=1.26.0
 pandas>=2.1.0
-
+ 
 # Database
 psycopg2-binary>=2.9.9
 sqlalchemy>=2.0.0
-
+ 
 # Understat xG data
-understatapi>=0.9.0
-
+understatapi>=0.7.1
+ 
 # HTTP / API
 requests>=2.31.0
-
+ 
 # Environment
 python-dotenv>=1.0.0
-
+ 
 # CLI dashboard
 rich>=13.7.0
-
+ 
 # Dev / testing
 pytest>=7.4.0
 joblib>=1.3.0

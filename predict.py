@@ -36,8 +36,6 @@ load_dotenv()
 project_root = Path(__file__).parent.absolute()
 sys.path.insert(0, str(project_root))
 
-from data.processed.build_dataset import build_dataframe
-from ingestion.odds_ingestion import load_odds, merge_odds_with_match_df
 from core.features import FEATURE_COLS
 from core.model import train_model_full
 from core.staking import is_value_bet, suggested_stake
